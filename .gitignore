@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.config.json
+.config.key
+build/
+*.toc
+*.pkg
+*.pyz
+localpycs/
+.vscode/
