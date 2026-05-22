@@ -1,7 +1,9 @@
 import base64
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -1140,10 +1142,22 @@ class ColorGradeAnalyzerApp(ctk.CTk):
             self.clear_provider_key_after_auth_failure(provider)
         elif is_error:
             messagebox.showerror("Execution Fault", "The target engine raised a runtime exception.")
+        else:
+            self.open_output_in_notepad(text)
 
     def set_output(self, text):
         self.output_textbox.delete("1.0", "end")
         self.output_textbox.insert("end", text)
+
+    def open_output_in_notepad(self, text):
+        if os.name != "nt":
+            return
+        try:
+            output_file = Path(tempfile.gettempdir()) / "GradeMatch_latest_output.txt"
+            output_file.write_text(text, encoding="utf-8")
+            subprocess.Popen(["notepad.exe", str(output_file)], close_fds=True)
+        except Exception as exc:
+            self.key_status_label.configure(text=f"Could not open Notepad: {exc}", text_color=DANGER)
 
 
 if __name__ == "__main__":
