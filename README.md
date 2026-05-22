@@ -1,18 +1,37 @@
 # GradeMatch
 
+AI photo color grading assistant for matching a reference image look with ChatGPT or Gemini.
+
 GradeMatch is a native Windows/macOS/Linux desktop app built with Python and CustomTkinter. It compares a source photo against a reference photo and generates an AI-assisted color grading, retouching, and visual matching blueprint.
 
-The app supports both ChatGPT and Gemini, includes side-by-side image previews, editable prompt presets, encrypted local API key storage, and a black desktop interface.
+The app supports both ChatGPT and Gemini, includes model switching, side-by-side image previews, editable prompt presets, encrypted local API key storage, and a black desktop interface for photographers, editors, creators, and retouchers.
+
+Keywords: AI photo editor, AI color grading, reference image matching, photo retouching, Lightroom presets, Photoshop retouching, Snapseed recipe, ChatGPT image analysis, Gemini image analysis, Python desktop app, CustomTkinter.
 
 ![GradeMatch logo](assets/app_logo.png)
 
 ## Features
 
 - Black CustomTkinter desktop UI.
-- ChatGPT and Gemini provider selector.
+- ChatGPT and Gemini provider selector with an AI model switcher.
 - Default model targets:
-  - ChatGPT: `gpt-5.2-pro`
+  - ChatGPT: `gpt-5.5`
   - Gemini: `gemini-2.5-pro`
+- ChatGPT model choices:
+  - `gpt-5.5`
+  - `gpt-5.5-pro`
+  - `gpt-5.4-mini`
+  - `gpt-5.4-nano`
+  - `gpt-5.2`
+  - `gpt-5.2-pro`
+  - `chat-latest`
+  - `gpt-5-mini`
+  - `gpt-5-nano`
+  - `gpt-4.1`
+- Gemini model choices:
+  - `gemini-2.5-pro`
+  - `gemini-2.5-flash`
+  - `gemini-2.5-flash-lite`
 - Two-image comparison workflow:
   - Image 1: reference / target style image.
   - Image 2: source / raw image.
@@ -90,14 +109,15 @@ Use `Clear Saved Keys` in the app to wipe saved credentials.
 
 1. Open GradeMatch.
 2. Choose `ChatGPT` or `Gemini`.
-3. Paste the matching API key or use a saved key.
-4. Click `Save Keys Locally` if you want one-click future use.
-5. Load Image 1, the target/reference image.
-6. Load Image 2, the raw/source image.
-7. Select a prompt recipe.
-8. Optionally edit the prompt in the live prompt editor.
-9. Click `Run GradeMatch Analysis`.
-10. Copy the generated output from the result panel.
+3. Choose the model. Use GPT-5.5 or Pro for deeper analysis, and Mini/Nano/Flash models for faster runs.
+4. Paste the matching API key or use a saved key.
+5. Click `Save Keys Locally` if you want one-click future use.
+6. Load Image 1, the target/reference image.
+7. Load Image 2, the raw/source image.
+8. Select a prompt recipe.
+9. Optionally edit the prompt in the live prompt editor.
+10. Click `Run GradeMatch Analysis`.
+11. Copy the generated output from the result panel.
 
 ## Prompt Presets
 
@@ -121,9 +141,9 @@ If the app says the API key is missing, paste a key into the correct provider fi
 
 If a saved key is invalid or expired, GradeMatch clears the stored key for that provider and asks you to enter a fresh one.
 
-If Gemini returns a model or quota error, confirm your Google API key has access to `gemini-2.5-pro`.
+If Gemini returns a model or quota error, switch between Pro, Flash, and Flash Lite, or confirm your Google API key has access to the selected model.
 
-If ChatGPT returns a model access error, confirm your OpenAI account has access to `gpt-5.2-pro`.
+If ChatGPT returns a model access error, switch models or confirm your OpenAI account has access to the selected model.
 
 If image preview fails, try JPG, PNG, WEBP, BMP, or TIFF. HEIC depends on local Pillow support and may vary by system.
 
@@ -144,3 +164,17 @@ Dependencies:
 - `pillow`
 - `google-generativeai`
 - `cryptography`
+
+## GitHub Discoverability
+
+Recommended repository description:
+
+```text
+AI photo color grading desktop app that matches a reference image look using ChatGPT or Gemini, with prompt presets for Photoshop, Lightroom, and Snapseed.
+```
+
+Recommended topics:
+
+```text
+ai-photo-editor, color-grading, photo-retouching, reference-image-matching, chatgpt, gemini, openai, google-gemini, lightroom, photoshop, snapseed, customtkinter, python-desktop-app
+```

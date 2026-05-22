@@ -37,8 +37,28 @@ FONT_SIZE_TITLE = 13
 SUCCESS = ACCENT_DIM
 DANGER = ACCENT_DIM
 
-OPENAI_DEFAULT_MODEL = "gpt-5.2-pro"
+OPENAI_DEFAULT_MODEL = "gpt-5.5"
 GEMINI_DEFAULT_MODEL = "gemini-2.5-pro"
+OPENAI_RESPONSES_ONLY_MODELS = {"gpt-5.5-pro", "gpt-5.2-pro"}
+MODEL_OPTIONS = {
+    "ChatGPT": {
+        "GPT-5.5": OPENAI_DEFAULT_MODEL,
+        "GPT-5.5 Pro": "gpt-5.5-pro",
+        "GPT-5.4 Mini": "gpt-5.4-mini",
+        "GPT-5.4 Nano": "gpt-5.4-nano",
+        "GPT-5.2": "gpt-5.2",
+        "GPT-5.2 Pro": "gpt-5.2-pro",
+        "Chat Latest": "chat-latest",
+        "GPT-5 Mini": "gpt-5-mini",
+        "GPT-5 Nano": "gpt-5-nano",
+        "GPT-4.1": "gpt-4.1",
+    },
+    "Gemini": {
+        "Gemini 2.5 Pro": GEMINI_DEFAULT_MODEL,
+        "Gemini 2.5 Flash": "gemini-2.5-flash",
+        "Gemini 2.5 Flash Lite": "gemini-2.5-flash-lite",
+    },
+}
 
 APP_NAME = "GradeMatch"
 RUN_BUTTON_TEXT = "Run GradeMatch Analysis"
@@ -58,19 +78,20 @@ It sends both images to your selected AI engine and returns a practical color an
 Daily workflow
 
 1. Select the AI Engine: ChatGPT or Gemini.
-2. Paste your API key once.
-3. Click Save Keys Locally if you want GradeMatch to remember it.
-4. Load Image 1 and Image 2.
-5. Choose or edit the prompt recipe.
-6. Click Run GradeMatch Analysis.
-7. Copy the output from the result box.
+2. Pick the model. Use Pro/best models for deeper analysis, or Mini/Nano/Flash models for faster results.
+3. Paste your API key once.
+4. Click Save Keys Locally if you want GradeMatch to remember it.
+5. Load Image 1 and Image 2.
+6. Choose or edit the prompt recipe.
+7. Click Run GradeMatch Analysis.
+8. Copy the output from the result box.
 
 API keys
 
 GradeMatch supports two providers:
 
-ChatGPT: uses the OpenAI API key field and defaults to the highest configured OpenAI model.
-Gemini: uses the Gemini API key field and defaults to the Pro Gemini model.
+ChatGPT: uses the OpenAI API key field and can switch between GPT-5.5, GPT-5.5 Pro, GPT-5.4 Mini/Nano, GPT-5.2, Chat Latest, Mini, Nano, and GPT-4.1 models.
+Gemini: uses the Gemini API key field and can switch between Pro, Flash, and Flash Lite models.
 
 Saved keys are encrypted locally in hidden app-folder files named .config.json and .config.key. Use Clear Saved Keys any time you want to remove them from this machine.
 
@@ -145,10 +166,10 @@ class LocalCredentialStore:
         return Fernet(self.key_path.read_bytes())
 
     def load_keys(self):
-        if not self.config_path.exists():
+        data = self.load_config()
+        if not data:
             return {}
         try:
-            data = json.loads(self.config_path.read_text(encoding="utf-8"))
             fernet = self._fernet()
             keys = {}
             encrypted_keys = data.get("api_keys", {})
@@ -161,6 +182,14 @@ class LocalCredentialStore:
         except Exception:
             return {}
 
+    def load_config(self):
+        if not self.config_path.exists():
+            return {}
+        try:
+            return json.loads(self.config_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
     def save_keys(self, keys):
         fernet = self._fernet()
         encrypted = {}
@@ -169,10 +198,23 @@ class LocalCredentialStore:
             if clean_key:
                 encrypted[provider] = fernet.encrypt(clean_key.encode("utf-8")).decode("utf-8")
 
-        payload = {
+        payload = self.load_config()
+        payload.update({
             "version": 1,
             "api_keys": encrypted,
-        }
+        })
+        self.save_config(payload)
+
+    def load_preferences(self):
+        return self.load_config().get("preferences", {})
+
+    def save_preferences(self, preferences):
+        payload = self.load_config()
+        payload["version"] = 1
+        payload["preferences"] = preferences
+        self.save_config(payload)
+
+    def save_config(self, payload):
         make_file_writable(self.config_path)
         self.config_path.write_text(json.dumps(payload, indent=4), encoding="utf-8")
         restrict_file(self.config_path)
@@ -289,9 +331,25 @@ def encode_image_to_base64(image_path):
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 
-def call_ai_engine(provider, api_key, prompt, img1_path, img2_path):
+def extract_openai_response_text(response):
+    direct_text = getattr(response, "output_text", "")
+    if direct_text:
+        return direct_text
+
+    output_chunks = []
+    for item in getattr(response, "output", []) or []:
+        for content in getattr(item, "content", []) or []:
+            text = getattr(content, "text", "")
+            if text:
+                output_chunks.append(text)
+    return "\n".join(output_chunks)
+
+
+def call_ai_engine(provider, api_key, model_name, prompt, img1_path, img2_path):
     if not provider or not api_key:
         raise ValueError("Missing API provider selection or API key.")
+    if not model_name:
+        raise ValueError("Missing AI model selection.")
     if not prompt:
         raise ValueError("Prompt field is empty.")
     if not img1_path or not img2_path:
@@ -302,8 +360,29 @@ def call_ai_engine(provider, api_key, prompt, img1_path, img2_path):
         base64_img1 = encode_image_to_base64(img1_path)
         base64_img2 = encode_image_to_base64(img2_path)
 
+        if model_name in OPENAI_RESPONSES_ONLY_MODELS:
+            response = client.responses.create(
+                model=model_name,
+                input=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": prompt},
+                            {
+                                "type": "input_text",
+                                "text": "Image 1 is the target/reference look. Image 2 is the raw/source image to transform.",
+                            },
+                            {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_img1}"},
+                            {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_img2}"},
+                        ],
+                    }
+                ],
+                max_output_tokens=4000,
+            )
+            return extract_openai_response_text(response) or "No response text returned."
+
         response = client.chat.completions.create(
-            model=OPENAI_DEFAULT_MODEL,
+            model=model_name,
             messages=[
                 {
                     "role": "user",
@@ -321,7 +400,7 @@ def call_ai_engine(provider, api_key, prompt, img1_path, img2_path):
 
     if provider == "Gemini":
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name=GEMINI_DEFAULT_MODEL)
+        model = genai.GenerativeModel(model_name=model_name)
 
         with Image.open(img1_path) as img1, Image.open(img2_path) as img2:
             pil_img1 = img1.copy()
@@ -418,6 +497,7 @@ class ColorGradeAnalyzerApp(ctk.CTk):
         self.presets = load_presets()
         self.credential_store = LocalCredentialStore()
         self.saved_keys = self.credential_store.load_keys()
+        self.preferences = self.credential_store.load_preferences()
         self.is_running = False
 
         self.preview_img1 = None
@@ -574,6 +654,7 @@ class ColorGradeAnalyzerApp(ctk.CTk):
         self.provider_menu = ctk.CTkOptionMenu(
             inner,
             values=["ChatGPT", "Gemini"],
+            command=self.on_provider_select,
             height=32,
             corner_radius=0,
             font=(FONT_FAMILY, FONT_SIZE),
@@ -587,6 +668,32 @@ class ColorGradeAnalyzerApp(ctk.CTk):
             dropdown_text_color=TEXT_PRIMARY,
         )
         self.provider_menu.pack(fill="x")
+        preferred_provider = self.preferences.get("provider", "ChatGPT")
+        if preferred_provider in MODEL_OPTIONS:
+            self.provider_menu.set(preferred_provider)
+
+        self.section_label(inner, "Model")
+        selected_provider = self.provider_menu.get()
+        self.model_menu = ctk.CTkOptionMenu(
+            inner,
+            values=list(MODEL_OPTIONS[selected_provider].keys()),
+            command=self.on_model_select,
+            height=32,
+            corner_radius=0,
+            font=(FONT_FAMILY, FONT_SIZE_SMALL),
+            dropdown_font=(FONT_FAMILY, FONT_SIZE_SMALL),
+            text_color=TEXT_PRIMARY,
+            fg_color=CONTROL_BG,
+            button_color=CONTROL_BG,
+            button_hover_color=CONTROL_HOVER,
+            dropdown_fg_color=SURFACE_BG,
+            dropdown_hover_color=CONTROL_HOVER,
+            dropdown_text_color=TEXT_PRIMARY,
+        )
+        self.model_menu.pack(fill="x")
+        preferred_model_label = self.preferences.get("models", {}).get(selected_provider)
+        if preferred_model_label in MODEL_OPTIONS[selected_provider]:
+            self.model_menu.set(preferred_model_label)
 
         self.section_label(inner, "Prompt Recipe")
         self.preset_menu = ctk.CTkOptionMenu(
@@ -656,13 +763,14 @@ class ColorGradeAnalyzerApp(ctk.CTk):
 
         self.model_status_label = ctk.CTkLabel(
             inner,
-            text=f"MODELS\nOPENAI  {OPENAI_DEFAULT_MODEL}\nGEMINI  {GEMINI_DEFAULT_MODEL}",
+            text="",
             text_color=TEXT_DIM,
             font=(FONT_FAMILY, FONT_SIZE_SMALL),
             justify="left",
             anchor="sw",
         )
         self.model_status_label.pack(side="bottom", fill="x", pady=(16, 0))
+        self.update_model_status()
 
     def build_image_canvas(self, parent):
         title = ctk.CTkLabel(
@@ -809,6 +917,43 @@ class ColorGradeAnalyzerApp(ctk.CTk):
         self.instructions_textbox.insert("1.0", INSTRUCTIONS_TEXT)
         self.instructions_textbox.configure(state="disabled")
 
+    def on_provider_select(self, provider):
+        if hasattr(self, "model_menu"):
+            model_labels = list(MODEL_OPTIONS[provider].keys())
+            self.model_menu.configure(values=model_labels)
+            preferred_model_label = self.preferences.get("models", {}).get(provider)
+            self.model_menu.set(preferred_model_label if preferred_model_label in model_labels else model_labels[0])
+        self.save_model_preferences()
+        self.update_model_status()
+
+    def on_model_select(self, _choice=None):
+        self.save_model_preferences()
+        self.update_model_status()
+
+    def get_selected_model(self, provider=None):
+        provider = provider or self.provider_menu.get()
+        model_label = self.model_menu.get()
+        return MODEL_OPTIONS.get(provider, {}).get(model_label, "")
+
+    def save_model_preferences(self):
+        if not hasattr(self, "provider_menu") or not hasattr(self, "model_menu"):
+            return
+        provider = self.provider_menu.get()
+        preferences = dict(self.preferences)
+        models = dict(preferences.get("models", {}))
+        models[provider] = self.model_menu.get()
+        preferences["provider"] = provider
+        preferences["models"] = models
+        self.preferences = preferences
+        self.credential_store.save_preferences(preferences)
+
+    def update_model_status(self):
+        if not hasattr(self, "model_status_label") or not hasattr(self, "model_menu"):
+            return
+        provider = self.provider_menu.get()
+        model_id = self.get_selected_model(provider)
+        self.model_status_label.configure(text=f"ACTIVE MODEL\n{provider.upper()}  {model_id}")
+
     def populate_saved_keys(self):
         chatgpt_key = self.saved_keys.get("ChatGPT") or os.getenv("OPENAI_API_KEY", "").strip()
         gemini_key = (
@@ -942,6 +1087,7 @@ class ColorGradeAnalyzerApp(ctk.CTk):
 
         provider = self.provider_menu.get()
         api_key, key_source = self.get_provider_key(provider)
+        model_name = self.get_selected_model(provider)
         active_prompt = self.prompt_textbox.get("1.0", "end-1c").strip()
 
         if not api_key:
@@ -955,20 +1101,21 @@ class ColorGradeAnalyzerApp(ctk.CTk):
 
         self.is_running = True
         self.process_btn.configure(state="disabled", text="PROCESSING...")
-        self.set_output("PROCESSING\nCalling selected model engine.\n")
+        self.set_output(f"PROCESSING\nCalling {provider} with {model_name}.\n")
 
         worker_thread = threading.Thread(
             target=self.async_process_worker,
-            args=(provider, api_key, key_source, active_prompt, self.img1_path, self.img2_path),
+            args=(provider, api_key, key_source, model_name, active_prompt, self.img1_path, self.img2_path),
             daemon=True,
         )
         worker_thread.start()
 
-    def async_process_worker(self, provider, api_key, key_source, active_prompt, img1_path, img2_path):
+    def async_process_worker(self, provider, api_key, key_source, model_name, active_prompt, img1_path, img2_path):
         try:
             analysis_result = call_ai_engine(
                 provider=provider,
                 api_key=api_key,
+                model_name=model_name,
                 prompt=active_prompt,
                 img1_path=img1_path,
                 img2_path=img2_path,
